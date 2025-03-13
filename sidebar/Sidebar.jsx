@@ -197,6 +197,17 @@ export default function Main() {
     }
   };
 
+  // Function to handle username input change with whitespace trimming
+  const handleUsernameChange = (e) => {
+    // Trim whitespace from each line
+    const trimmedValue = e.target.value
+      .split('\n')
+      .map(line => line.trim())
+      .join('\n');
+    
+    setUsername(trimmedValue);
+  };
+
   // Function to query user list data
   const handleQuery = () => {
     if (port) {
@@ -208,21 +219,96 @@ export default function Main() {
       const formattedStartDate = startDate.replace(/-/g, '');
       const formattedEndDate = endDate.replace(/-/g, '');
       
-      // Prepare query parameters
-      const params = {
-        startDate: formattedStartDate,
-        endDate: formattedEndDate,
-        userName: username,
-        clueType: parseInt(productTypeId),
-        sid: parseInt(supplierId),
-        pn: currentPage,
-        rn: itemsPerPage
+      // Process username - get array of non-empty trimmed usernames
+      const usernames = username
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      // If no usernames provided, send a single request with empty username
+      if (usernames.length === 0) {
+        const params = {
+          startDate: formattedStartDate,
+          endDate: formattedEndDate,
+          userName: "",
+          clueType: parseInt(productTypeId),
+          sid: parseInt(supplierId),
+          pn: currentPage,
+          rn: itemsPerPage
+        };
+        
+        console.log('Sidebar is requesting produce user list with params:', params);
+        port.postMessage({ 
+          action: 'fetchProduceUserList',
+          params: params
+        });
+        return;
+      }
+      
+      // Create an array to store all results
+      let allResults = [];
+      let totalItems = 0;
+      let requestsCompleted = 0;
+      
+      // Set up a message listener for handling multiple responses
+      const messageListener = (message) => {
+        if (message.action === 'produceUserListResponse') {
+          requestsCompleted++;
+          
+          if (message.error) {
+            setError(`获取用户 "${usernames[requestsCompleted-1]}" 数据时出错: ${message.error}`);
+          } else if (message.data && message.data.errno === 0) {
+            // Process the user list data
+            const userData = message.data.data;
+            
+            // Add the list data to our collection
+            if (userData.list && userData.list.length > 0) {
+              allResults = [...allResults, ...userData.list];
+              totalItems += userData.list.length;
+            }
+            
+            // Update progress message
+            setPendingMessage(`正在查询数据，已完成 ${requestsCompleted}/${usernames.length} 个用户...`);
+            
+            // If all requests are completed, update the UI
+            if (requestsCompleted === usernames.length) {
+              // Remove the listener
+              port.onMessage.removeListener(messageListener);
+              
+              // Update the UI with combined results
+              setQueryResults(allResults);
+              setTotalCount(totalItems);
+              setPageCount(Math.ceil(totalItems / itemsPerPage));
+              setIsLoading(false);
+              setPendingMessage(null);
+            }
+          }
+        }
       };
       
-      console.log('Sidebar is requesting produce user list with params:', params);
-      port.postMessage({ 
-        action: 'fetchProduceUserList',
-        params: params
+      // Add the message listener
+      port.onMessage.addListener(messageListener);
+      
+      // Send a request for each username
+      usernames.forEach((user, index) => {
+        // Add a small delay between requests to avoid overwhelming the server
+        setTimeout(() => {
+          const params = {
+            startDate: formattedStartDate,
+            endDate: formattedEndDate,
+            userName: user,
+            clueType: parseInt(productTypeId),
+            sid: parseInt(supplierId),
+            pn: 1, // Always start from page 1 for each user
+            rn: 1000 // Request a large number to get all results for this user
+          };
+          
+          console.log(`Requesting data for user ${index+1}/${usernames.length}: ${user}`);
+          port.postMessage({ 
+            action: 'fetchProduceUserList',
+            params: params
+          });
+        }, index * 300); // 300ms delay between requests
       });
     } else {
       console.error('Cannot fetch data: port is not connected');
@@ -482,19 +568,22 @@ export default function Main() {
               </select>
             </div>
             
-            {/* Username Input */}
+            {/* Username Input - Changed to textarea for multi-line support */}
             <div className="flex flex-col w-full">
               <label className="label label-text text-sm py-1">
-                用户名
+                用户名（支持多行输入）
               </label>
-              <input 
-                type="text" 
-                placeholder="请输入" 
-                className="input input-sm input-bordered w-full text-sm" 
+              <textarea 
+                placeholder="请输入，每行一个用户名" 
+                className="textarea textarea-bordered text-sm w-full" 
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={handleUsernameChange}
                 disabled={isLoading}
+                rows={4}
               />
+              <div className="text-xs text-gray-500 mt-1">
+                每行输入一个用户名，自动去除前后空格
+              </div>
             </div>
             
             {/* Product Type Selection */}
