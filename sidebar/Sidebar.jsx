@@ -339,14 +339,25 @@ export default function Main() {
     }
 
     try {
+      // Clear any previously stored data before starting the export
       setIsExporting(true);
-      setExportStatus('正在收集数据...');
+      setExportStatus('正在清除旧数据...');
       setExportProgress(0);
       setCollectedData([]);
-
-      // Calculate total pages needed
-      const totalPages = Math.ceil(totalCount / itemsPerPage);
-      let allData = [];
+      
+      // Clear data from Chrome storage
+      await new Promise((resolve, reject) => {
+        chrome.storage.local.remove('exportedData', () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError.message);
+          } else {
+            resolve();
+          }
+        });
+      });
+      
+      setExportStatus('正在收集数据...');
+      setExportProgress(5);
 
       // Format dates to match the API format (YYYYMMDD)
       const formattedStartDate = startDate.replace(/-/g, '');
@@ -382,40 +393,95 @@ export default function Main() {
         });
       };
 
-      // Collect data from all pages
-      for (let page = 1; page <= totalPages; page++) {
-        setExportStatus(`正在收集数据 (${page}/${totalPages})...`);
+      let allData = [];
+      
+      // Process username - get array of non-empty trimmed usernames
+      const usernames = username
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      // If no usernames provided, use empty string for username
+      if (usernames.length === 0) {
+        // Calculate total pages needed
+        const totalPages = Math.ceil(totalCount / itemsPerPage);
         
-        // Prepare query parameters
-        const params = {
-          startDate: formattedStartDate,
-          endDate: formattedEndDate,
-          userName: username,
-          clueType: parseInt(productTypeId),
-          sid: parseInt(supplierId),
-          pn: page,
-          rn: itemsPerPage
-        };
-        
-        try {
-          // Request data for this page
-          const pageData = await sendMessageAsync({
-            action: 'fetchProduceUserList',
-            params: params
-          });
+        // Collect data from all pages
+        for (let page = 1; page <= totalPages; page++) {
+          setExportStatus(`正在收集数据 (${page}/${totalPages})...`);
           
-          // Add the list data to our collection
-          if (pageData && pageData.list && pageData.list.length > 0) {
-            allData = [...allData, ...pageData.list];
+          // Prepare query parameters
+          const params = {
+            startDate: formattedStartDate,
+            endDate: formattedEndDate,
+            userName: "",
+            clueType: parseInt(productTypeId),
+            sid: parseInt(supplierId),
+            pn: page,
+            rn: itemsPerPage
+          };
+          
+          try {
+            // Request data for this page
+            const pageData = await sendMessageAsync({
+              action: 'fetchProduceUserList',
+              params: params
+            });
+            
+            // Add the list data to our collection
+            if (pageData && pageData.list && pageData.list.length > 0) {
+              allData = [...allData, ...pageData.list];
+            }
+            
+            // Update progress
+            setExportProgress(Math.floor(5 + (page / totalPages) * 45)); // 5-50% for data collection
+          } catch (error) {
+            console.error(`Error fetching page ${page}:`, error);
+            setError(`获取第 ${page} 页数据时出错: ${error}`);
+            setIsExporting(false);
+            return;
           }
+        }
+      } else {
+        // For multiple usernames, fetch data for each username
+        let completedUsers = 0;
+        
+        for (const user of usernames) {
+          setExportStatus(`正在收集用户 "${user}" 的数据 (${completedUsers+1}/${usernames.length})...`);
           
-          // Update progress
-          setExportProgress(Math.floor((page / totalPages) * 50)); // First 50% for data collection
-        } catch (error) {
-          console.error(`Error fetching page ${page}:`, error);
-          setError(`获取第 ${page} 页数据时出错: ${error}`);
-          setIsExporting(false);
-          return;
+          // Prepare query parameters - use large rn to get all data for this user
+          const params = {
+            startDate: formattedStartDate,
+            endDate: formattedEndDate,
+            userName: user, // 使用单个已去除空格的用户名
+            clueType: parseInt(productTypeId),
+            sid: parseInt(supplierId),
+            pn: 1,
+            rn: 1000 // Request a large number to get all results for this user
+          };
+          
+          try {
+            // Request data for this user
+            const userData = await sendMessageAsync({
+              action: 'fetchProduceUserList',
+              params: params
+            });
+            
+            // Add the list data to our collection
+            if (userData && userData.list && userData.list.length > 0) {
+              allData = [...allData, ...userData.list];
+            }
+            
+            completedUsers++;
+            
+            // Update progress - distribute 45% of progress bar across all users
+            setExportProgress(Math.floor(5 + (completedUsers / usernames.length) * 45));
+          } catch (error) {
+            console.error(`Error fetching data for user ${user}:`, error);
+            setError(`获取用户 "${user}" 数据时出错: ${error}`);
+            setIsExporting(false);
+            return;
+          }
         }
       }
 
