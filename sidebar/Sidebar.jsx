@@ -31,104 +31,145 @@ export default function Main() {
   const [pageCount, setPageCount] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  // Establish connection with background script
-  useEffect(() => {
-    const newPort = chrome.runtime.connect({ name: "sidebar" });
-    setPort(newPort);
-
-    // Listen for messages from background script
-    newPort.onMessage.addListener((message) => {
-      console.log('Sidebar received message:', message);
+  // Function to establish connection with background script
+  const connectToBackground = () => {
+    if (isConnecting) return; // Prevent multiple connection attempts
+    
+    setIsConnecting(true);
+    console.log('Sidebar is connecting to background script...');
+    
+    try {
+      const newPort = chrome.runtime.connect({ name: "sidebar" });
+      setPort(newPort);
       
-      if (message.action === 'filterDataResponse') {
-        setIsLoading(false);
-        setPendingMessage(null);
+      // Listen for messages from background script
+      newPort.onMessage.addListener((message) => {
+        console.log('Sidebar received message:', message);
         
-        if (message.error) {
-          setError(message.error);
-        } else if (message.data && message.data.errno === 0) {
-          // Process the filter data
-          const filterData = message.data.data.filter;
+        if (message.action === 'filterDataResponse') {
+          setIsLoading(false);
+          setPendingMessage(null);
           
-          // Update supplier options
-          const supplierFilter = filterData.find(filter => filter.id === 'sid');
-          if (supplierFilter && supplierFilter.list) {
-            setSupplierOptions(supplierFilter.list.map(item => ({
-              id: item.id.toString(),
-              name: item.name
-            })));
+          if (message.error) {
+            setError(message.error);
+          } else if (message.data && message.data.errno === 0) {
+            // Process the filter data
+            const filterData = message.data.data.filter;
             
-            // Set default supplier ID to the first one in the list if available
-            if (supplierFilter.list.length > 0) {
-              setSupplierId(supplierFilter.list[0].id.toString());
+            // Update supplier options
+            const supplierFilter = filterData.find(filter => filter.id === 'sid');
+            if (supplierFilter && supplierFilter.list) {
+              setSupplierOptions(supplierFilter.list.map(item => ({
+                id: item.id.toString(),
+                name: item.name
+              })));
+              
+              // Set default supplier ID to the first one in the list if available
+              if (supplierFilter.list.length > 0) {
+                setSupplierId(supplierFilter.list[0].id.toString());
+              }
+            }
+            
+            // Update product types
+            const clueTypeFilter = filterData.find(filter => filter.id === 'clueType');
+            if (clueTypeFilter && clueTypeFilter.list) {
+              setProductTypes(clueTypeFilter.list.map(item => ({
+                id: item.id.toString(),
+                name: item.name
+              })));
+              
+              // Set default product type ID to the first one in the list if available
+              if (clueTypeFilter.list.length > 0) {
+                setProductTypeId(clueTypeFilter.list[0].id.toString());
+              }
             }
           }
+        } else if (message.action === 'error') {
+          setIsLoading(false);
+          setPendingMessage(null);
+          setError(message.error);
+        } else if (message.action === 'requestPending') {
+          setIsLoading(true);
+          setError(null);
+          setPendingMessage(message.message);
+        } else if (message.action === 'contentScriptReady') {
+          // Content script is ready, we can fetch data if not already loading
+          if (!isLoading) {
+            fetchFilterData();
+          }
+        } else if (message.action === 'produceUserListResponse') {
+          // Handle the response from get_produceuserlist
+          setIsLoading(false);
+          setPendingMessage(null);
           
-          // Update product types
-          const clueTypeFilter = filterData.find(filter => filter.id === 'clueType');
-          if (clueTypeFilter && clueTypeFilter.list) {
-            setProductTypes(clueTypeFilter.list.map(item => ({
-              id: item.id.toString(),
-              name: item.name
-            })));
+          if (message.error) {
+            setError(message.error);
+          } else if (message.data && message.data.errno === 0) {
+            // Process the user list data
+            const userData = message.data.data;
+            setQueryResults(userData.list || []);
+            setTotalCount(userData.total || 0);
             
-            // Set default product type ID to the first one in the list if available
-            if (clueTypeFilter.list.length > 0) {
-              setProductTypeId(clueTypeFilter.list[0].id.toString());
-            }
+            // Calculate page count based on total and items per page
+            const pages = Math.ceil((userData.total || 0) / itemsPerPage);
+            setPageCount(pages);
           }
         }
-      } else if (message.action === 'error') {
-        setIsLoading(false);
-        setPendingMessage(null);
-        setError(message.error);
-      } else if (message.action === 'requestPending') {
-        setIsLoading(true);
-        setError(null);
-        setPendingMessage(message.message);
-      } else if (message.action === 'contentScriptReady') {
-        // Content script is ready, we can fetch data if not already loading
-        if (!isLoading) {
-          fetchFilterData();
-        }
-      } else if (message.action === 'produceUserListResponse') {
-        // Handle the response from get_produceuserlist
-        setIsLoading(false);
-        setPendingMessage(null);
-        
-        if (message.error) {
-          setError(message.error);
-        } else if (message.data && message.data.errno === 0) {
-          // Process the user list data
-          const userData = message.data.data;
-          setQueryResults(userData.list || []);
-          setTotalCount(userData.total || 0);
-          
-          // Calculate page count based on total and items per page
-          const pages = Math.ceil((userData.total || 0) / itemsPerPage);
-          setPageCount(pages);
-        }
-      }
-    });
+      });
 
-    // Handle disconnection
-    newPort.onDisconnect.addListener(() => {
-      console.log('Disconnected from background script');
+      // Handle disconnection
+      newPort.onDisconnect.addListener(() => {
+        console.log('Disconnected from background script');
+        setPort(null);
+        setIsConnecting(false);
+        setError('与后台脚本的连接已断开。正在尝试重新连接...');
+        
+        // Increment connection attempts
+        setConnectionAttempts(prev => prev + 1);
+        
+        // Try to reconnect after a delay, with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 30000); // Max 30 seconds
+        console.log(`Will attempt to reconnect in ${delay/1000} seconds...`);
+        
+        setTimeout(() => {
+          connectToBackground();
+        }, delay);
+      });
+
+      // Connection successful, reset connection attempts
+      setConnectionAttempts(0);
+      setIsConnecting(false);
+      setError(null);
+      
+      // Immediately try to fetch data when connection is established
+      console.log('Sidebar is requesting filter data on connection');
+      newPort.postMessage({ action: 'fetchFilterData' });
+      
+    } catch (error) {
+      console.error('Error connecting to background script:', error);
       setPort(null);
-      setError('与后台脚本的连接已断开。请刷新页面重试。');
-    });
+      setIsConnecting(false);
+      setError(`连接错误: ${error.message}`);
+      
+      // Try to reconnect after a delay
+      setTimeout(() => {
+        connectToBackground();
+      }, 2000);
+    }
+  };
 
-    // Immediately try to fetch data when sidebar loads
-    setIsLoading(true);
-    setError(null);
-    setPendingMessage(null);
-    console.log('Sidebar is requesting filter data on initial load');
-    newPort.postMessage({ action: 'fetchFilterData' });
-
+  // Establish connection with background script on component mount
+  useEffect(() => {
+    connectToBackground();
+    
     // Clean up connection when component unmounts
     return () => {
-      newPort.disconnect();
+      if (port) {
+        port.disconnect();
+      }
     };
   }, []);
 
@@ -143,6 +184,9 @@ export default function Main() {
     } else {
       console.error('Cannot fetch data: port is not connected');
       setError('连接未建立，无法获取数据');
+      
+      // Try to reconnect
+      connectToBackground();
     }
   };
 
@@ -176,6 +220,9 @@ export default function Main() {
     } else {
       console.error('Cannot fetch data: port is not connected');
       setError('连接未建立，无法获取数据');
+      
+      // Try to reconnect
+      connectToBackground();
     }
   };
 
@@ -205,7 +252,12 @@ export default function Main() {
 
   // Retry fetching data
   const handleRetry = () => {
-    fetchFilterData();
+    // First try to reconnect if port is null
+    if (!port) {
+      connectToBackground();
+    } else {
+      fetchFilterData();
+    }
   };
 
   return (
