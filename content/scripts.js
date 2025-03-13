@@ -1,4 +1,4 @@
-import { textbook_info, save_book_info, baidu_user_info, replaceLatexWithImages, replacePunctuation, doc_img_upload, doc_save_page, llm_test, dash_userlist_label } from "../lib.js";
+import { textbook_info, save_book_info, baidu_user_info, replaceLatexWithImages, replacePunctuation, doc_img_upload, doc_save_page, llm_test, dash_userlist_label, get_produceuserlist } from "../lib.js";
 
 console.log('hello from content_scripts');
 
@@ -28,6 +28,26 @@ function connectToBackground() {
         console.error('Error fetching filter data:', error);
         port.postMessage({
           action: 'filterDataResponse',
+          error: error.message
+        });
+      }
+    } else if (message.action === 'fetchProduceUserList') {
+      try {
+        // Call the get_produceuserlist function with the provided parameters
+        const params = message.params || {};
+        console.log('Content script is calling get_produceuserlist with params:', params);
+        
+        const response = await get_produceuserlist(params);
+        
+        // Send the data back to the background script
+        port.postMessage({
+          action: 'produceUserListResponse',
+          data: response
+        });
+      } catch (error) {
+        console.error('Error fetching produce user list:', error);
+        port.postMessage({
+          action: 'produceUserListResponse',
           error: error.message
         });
       }

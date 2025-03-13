@@ -3,24 +3,34 @@ import React, { useState, useEffect } from "react";
 export default function Main() {
   const [startDate, setStartDate] = useState("2025-03-06");
   const [endDate, setEndDate] = useState("2025-03-13");
-  const [supplierId, setSupplierId] = useState("syr");
+  const [supplierId, setSupplierId] = useState("29");
   const [username, setUsername] = useState("");
   const [activeTab, setActiveTab] = useState("settings");
-  const [productTypeId, setProductTypeId] = useState("fixed");
+  const [productTypeId, setProductTypeId] = useState("1");
   const [supplierOptions, setSupplierOptions] = useState([
-    { id: "syr", name: "syr" },
-    { id: "abc", name: "ABC Supplier" },
-    { id: "xyz", name: "XYZ Supplier" },
+    { id: "1", name: "百度教育" },
+    { id: "4", name: "高等教育-百度众测" },
+    { id: "26", name: "众测-教辅拆解" },
+    { id: "29", name: "syr" },
   ]);
   const [productTypes, setProductTypes] = useState([
-    { id: "fixed", name: "定产容案" },
-    { id: "custom", name: "定制产品" },
-    { id: "standard", name: "标准产品" },
+    { id: "1", name: "定产答案" },
+    { id: "2", name: "定产解析" },
+    { id: "3", name: "定产视频" },
+    { id: "4", name: "高等教育答案定产" },
+    { id: "5", name: "高等教育错误试题修订" },
+    { id: "8", name: "定向生产" },
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pendingMessage, setPendingMessage] = useState(null);
   const [port, setPort] = useState(null);
+  // Add state variables for query results
+  const [queryResults, setQueryResults] = useState(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Establish connection with background script
   useEffect(() => {
@@ -45,7 +55,7 @@ export default function Main() {
           const supplierFilter = filterData.find(filter => filter.id === 'sid');
           if (supplierFilter && supplierFilter.list) {
             setSupplierOptions(supplierFilter.list.map(item => ({
-              id: item.id,
+              id: item.id.toString(),
               name: item.name
             })));
             
@@ -59,9 +69,14 @@ export default function Main() {
           const clueTypeFilter = filterData.find(filter => filter.id === 'clueType');
           if (clueTypeFilter && clueTypeFilter.list) {
             setProductTypes(clueTypeFilter.list.map(item => ({
-              id: item.id,
+              id: item.id.toString(),
               name: item.name
             })));
+            
+            // Set default product type ID to the first one in the list if available
+            if (clueTypeFilter.list.length > 0) {
+              setProductTypeId(clueTypeFilter.list[0].id.toString());
+            }
           }
         }
       } else if (message.action === 'error') {
@@ -76,6 +91,23 @@ export default function Main() {
         // Content script is ready, we can fetch data if not already loading
         if (!isLoading) {
           fetchFilterData();
+        }
+      } else if (message.action === 'produceUserListResponse') {
+        // Handle the response from get_produceuserlist
+        setIsLoading(false);
+        setPendingMessage(null);
+        
+        if (message.error) {
+          setError(message.error);
+        } else if (message.data && message.data.errno === 0) {
+          // Process the user list data
+          const userData = message.data.data;
+          setQueryResults(userData.list || []);
+          setTotalCount(userData.total || 0);
+          
+          // Calculate page count based on total and items per page
+          const pages = Math.ceil((userData.total || 0) / itemsPerPage);
+          setPageCount(pages);
         }
       }
     });
@@ -114,12 +146,49 @@ export default function Main() {
     }
   };
 
+  // Function to query user list data
+  const handleQuery = () => {
+    if (port) {
+      setIsLoading(true);
+      setError(null);
+      setPendingMessage('正在查询数据，请稍候...');
+      
+      // Format dates to match the API format (YYYYMMDD)
+      const formattedStartDate = startDate.replace(/-/g, '');
+      const formattedEndDate = endDate.replace(/-/g, '');
+      
+      // Prepare query parameters
+      const params = {
+        startDate: formattedStartDate,
+        endDate: formattedEndDate,
+        userName: username,
+        clueType: parseInt(productTypeId),
+        sid: parseInt(supplierId),
+        pn: currentPage,
+        rn: itemsPerPage
+      };
+      
+      console.log('Sidebar is requesting produce user list with params:', params);
+      port.postMessage({ 
+        action: 'fetchProduceUserList',
+        params: params
+      });
+    } else {
+      console.error('Cannot fetch data: port is not connected');
+      setError('连接未建立，无法获取数据');
+    }
+  };
+
   // Reset form values
   const handleReset = () => {
     setStartDate("2025-03-06");
     setEndDate("2025-03-13");
-    setSupplierId("syr");
+    setSupplierId("29");
     setUsername("");
+    setQueryResults(null);
+    setTotalCount(0);
+    setPageCount(0);
+    setCurrentPage(1);
   };
 
   // Export data
@@ -248,6 +317,18 @@ export default function Main() {
               </div>
             )}
             
+            {/* Results display area */}
+            {queryResults && (
+              <div className="mt-2 p-2 bg-base-200 rounded-md">
+                <div className="text-sm font-medium">查询结果</div>
+                <div className="flex justify-between text-xs mt-1">
+                  <span>总数: {totalCount}</span>
+                  <span>页数: {currentPage}/{pageCount}</span>
+                  <span>每页: {itemsPerPage}条</span>
+                </div>
+              </div>
+            )}
+            
             {/* Action Buttons */}
             <div className="flex gap-2 mt-1">
               <button 
@@ -259,6 +340,13 @@ export default function Main() {
               </button>
               <button 
                 className="btn btn-sm btn-primary flex-1 text-sm"
+                onClick={handleQuery}
+                disabled={isLoading}
+              >
+                查询
+              </button>
+              <button 
+                className="btn btn-sm btn-accent flex-1 text-sm"
                 onClick={handleExport}
                 disabled={isLoading}
               >
