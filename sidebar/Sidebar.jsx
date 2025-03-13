@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 
+// Import SheetJS
+import * as XLSX from 'xlsx';
+
 export default function Main() {
   const [startDate, setStartDate] = useState("2025-03-06");
   const [endDate, setEndDate] = useState("2025-03-13");
@@ -33,6 +36,10 @@ export default function Main() {
   const [currentPage, setCurrentPage] = useState(1);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStatus, setExportStatus] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [collectedData, setCollectedData] = useState([]);
 
   // Function to establish connection with background script
   const connectToBackground = () => {
@@ -239,15 +246,155 @@ export default function Main() {
   };
 
   // Export data
-  const handleExport = () => {
-    // Implement export functionality
-    console.log("Exporting data with filters:", {
-      startDate,
-      endDate,
-      supplierId,
-      username,
-      productTypeId
-    });
+  const handleExport = async () => {
+    if (!queryResults || totalCount === 0) {
+      setError('没有数据可导出');
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      setExportStatus('正在收集数据...');
+      setExportProgress(0);
+      setCollectedData([]);
+
+      // Calculate total pages needed
+      const totalPages = Math.ceil(totalCount / itemsPerPage);
+      let allData = [];
+
+      // Format dates to match the API format (YYYYMMDD)
+      const formattedStartDate = startDate.replace(/-/g, '');
+      const formattedEndDate = endDate.replace(/-/g, '');
+
+      // Create a promise-based version of port.postMessage that returns a promise
+      const sendMessageAsync = (message) => {
+        return new Promise((resolve, reject) => {
+          // Set up a one-time message listener for this specific request
+          const messageListener = (response) => {
+            if (response.action === 'produceUserListResponse') {
+              port.onMessage.removeListener(messageListener);
+              if (response.error) {
+                reject(response.error);
+              } else if (response.data && response.data.errno === 0) {
+                resolve(response.data.data);
+              } else {
+                reject('未知错误');
+              }
+            }
+          };
+
+          port.onMessage.addListener(messageListener);
+          
+          // Send the message
+          port.postMessage(message);
+          
+          // Set a timeout to prevent hanging
+          setTimeout(() => {
+            port.onMessage.removeListener(messageListener);
+            reject('请求超时');
+          }, 30000); // 30 seconds timeout
+        });
+      };
+
+      // Collect data from all pages
+      for (let page = 1; page <= totalPages; page++) {
+        setExportStatus(`正在收集数据 (${page}/${totalPages})...`);
+        
+        // Prepare query parameters
+        const params = {
+          startDate: formattedStartDate,
+          endDate: formattedEndDate,
+          userName: username,
+          clueType: parseInt(productTypeId),
+          sid: parseInt(supplierId),
+          pn: page,
+          rn: itemsPerPage
+        };
+        
+        try {
+          // Request data for this page
+          const pageData = await sendMessageAsync({
+            action: 'fetchProduceUserList',
+            params: params
+          });
+          
+          // Add the list data to our collection
+          if (pageData && pageData.list && pageData.list.length > 0) {
+            allData = [...allData, ...pageData.list];
+          }
+          
+          // Update progress
+          setExportProgress(Math.floor((page / totalPages) * 50)); // First 50% for data collection
+        } catch (error) {
+          console.error(`Error fetching page ${page}:`, error);
+          setError(`获取第 ${page} 页数据时出错: ${error}`);
+          setIsExporting(false);
+          return;
+        }
+      }
+
+      // Store the collected data
+      setCollectedData(allData);
+      
+      // Save to Chrome storage
+      setExportStatus('正在保存数据到浏览器存储...');
+      
+      // Use chrome.storage.local to save the data
+      chrome.storage.local.set({ 'exportedData': allData }, () => {
+        if (chrome.runtime.lastError) {
+          setError(`保存数据时出错: ${chrome.runtime.lastError.message}`);
+          setIsExporting(false);
+          return;
+        }
+        
+        // Start exporting to Excel
+        setExportStatus('正在生成Excel文件...');
+        setExportProgress(60); // 60% progress after storage
+        
+        // Create workbook
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(allData);
+        
+        // Add worksheet to workbook
+        XLSX.utils.book_append_sheet(wb, ws, "数据导出");
+        
+        setExportProgress(80); // 80% progress after creating workbook
+        
+        // Generate Excel file
+        setExportStatus('正在下载Excel文件...');
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // Create download link and trigger download
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        // Create filename with current date
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        link.download = `数据导出_${dateStr}.xlsx`;
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setExportProgress(100); // 100% progress after download
+        setExportStatus('导出完成!');
+        
+        // Reset export state after a delay
+        setTimeout(() => {
+          setIsExporting(false);
+          setExportProgress(0);
+          setExportStatus('');
+        }, 3000);
+      });
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      setError(`导出错误: ${error.message || error}`);
+      setIsExporting(false);
+    }
   };
 
   // Retry fetching data
@@ -381,28 +528,45 @@ export default function Main() {
               </div>
             )}
             
+            {/* Export Progress */}
+            {isExporting && (
+              <div className="mt-2">
+                <div className="flex justify-between text-xs mb-1">
+                  <span>{exportStatus}</span>
+                  <span>{exportProgress}%</span>
+                </div>
+                <progress 
+                  className="progress progress-primary w-full" 
+                  value={exportProgress} 
+                  max="100"
+                ></progress>
+              </div>
+            )}
+            
             {/* Action Buttons */}
             <div className="flex gap-2 mt-1">
               <button 
                 className="btn btn-sm btn-outline flex-1 text-sm"
                 onClick={handleReset}
-                disabled={isLoading}
+                disabled={isLoading || isExporting}
               >
                 重置
               </button>
               <button 
                 className="btn btn-sm btn-primary flex-1 text-sm"
                 onClick={handleQuery}
-                disabled={isLoading}
+                disabled={isLoading || isExporting}
               >
                 查询
               </button>
               <button 
                 className="btn btn-sm btn-accent flex-1 text-sm"
                 onClick={handleExport}
-                disabled={isLoading}
+                disabled={isLoading || isExporting || !queryResults}
               >
-                导出
+                {isExporting ? (
+                  <span className="loading loading-spinner loading-xs"></span>
+                ) : '导出'}
               </button>
             </div>
           </div>
