@@ -351,9 +351,37 @@ export default function Main() {
         setExportStatus('正在生成Excel文件...');
         setExportProgress(60); // 60% progress after storage
         
-        // Create workbook
+        // Define column headers mapping based on the image
+        const columnHeaders = {
+          userName: '用户名',
+          totalLeadsClue: '线索领取数量',
+          totalSubClue: '试题提交审核总数(快照)',
+          totalPassClue: '试题通过总数(实时)',
+          totalPassClueSnapShot: '试题通过总数(快照)',
+          totalPassRate: '供应商生产通过率',
+          totalPending: '驳回待生产试题数(实时)',
+          totalClueDiscarded: '试题废弃总数(快照)',
+          discardRate: '供应商线索废弃率',
+          timeSpentPerClue: '单题平均生产耗时'
+        };
+        
+        // Transform data to include proper headers
+        const formattedData = allData.map(item => {
+          const formattedItem = {};
+          
+          // Map each field to its corresponding header
+          Object.keys(columnHeaders).forEach(key => {
+            if (key in item) {
+              formattedItem[columnHeaders[key]] = item[key];
+            }
+          });
+          
+          return formattedItem;
+        });
+        
+        // Create workbook with formatted data
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(allData);
+        const ws = XLSX.utils.json_to_sheet(formattedData);
         
         // Add worksheet to workbook
         XLSX.utils.book_append_sheet(wb, ws, "数据导出");
@@ -370,10 +398,11 @@ export default function Main() {
         const link = document.createElement('a');
         link.href = url;
         
-        // Create filename with current date
+        // Create filename with current date and supplier name
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0];
-        link.download = `数据导出_${dateStr}.xlsx`;
+        const supplierName = supplierOptions.find(s => s.id === supplierId)?.name || '';
+        link.download = `${supplierName}_数据导出_${dateStr}.xlsx`;
         
         document.body.appendChild(link);
         link.click();
