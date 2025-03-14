@@ -573,28 +573,27 @@ export default function Main() {
             totalSubClue: '试题提交审核总数(快照)',
             totalPassClue: '试题通过总数(实时)',
             totalPassClueSnapShot: '试题通过总数(快照)',
-            totalPassRate: '供应商生产通过率',
+            TotalPassRate: '供应商生产通过率',
             totalPending: '驳回待生产试题数(实时)',
-            totalClueDiscarded: '试题废弃总数(快照)',
+            totalClueDiscarded: '试题废弃总数（快照）',
             discardRate: '供应商线索废弃率',
-            timeSpentPerClue: '单题平均生产耗时'
+            timeSpentPerClue: '单题平均生产耗时',
+            productionBacklogRate: '供应商线索浪费率'
           };
         } else {
           // Mapping for 试题审核 (audit)
           columnHeaders = {
             userName: '用户名',
             totalLeadsClue: '线索领取数量',
+            totalPendingClue: '待审核总数(实时)',
             totalRejectedClue: '试题驳回总数(快照)',
             totalPassClue: '试题通过总数(实时)',
             totalPassClueSnapShot: '试题通过总数(快照)',
-            totalPendingClue: '待审核总数(实时)',
             waitAuditAgainNum: '驳回待审核总数(实时)',
             totalReviewedClue: '已审核总数',
-            // Include both uppercase and lowercase versions
-            rejectionRate: '供应商审核驳回率(%)',
-            RejectionRate: '供应商审核驳回率(快照)',
+            rejectionRate: '供应商审核驳回率(快照)',
             auditPassRate: '供应商审核通过率',
-            timeSpentPerClue: '单题平均审核耗时(秒)'
+            timeSpentPerClue: '单题平均审核耗时'
           };
         }
 
