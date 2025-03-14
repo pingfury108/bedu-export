@@ -574,19 +574,39 @@ export default function Main() {
         setExportStatus('正在生成Excel文件...');
         setExportProgress(60); // 60% progress after storage
         
-        // Define column headers mapping based on the image
-        const columnHeaders = {
-          userName: '用户名',
-          totalLeadsClue: '线索领取数量',
-          totalSubClue: '试题提交审核总数(快照)',
-          totalPassClue: '试题通过总数(实时)',
-          totalPassClueSnapShot: '试题通过总数(快照)',
-          totalPassRate: '供应商生产通过率',
-          totalPending: '驳回待生产试题数(实时)',
-          totalClueDiscarded: '试题废弃总数(快照)',
-          discardRate: '供应商线索废弃率',
-          timeSpentPerClue: '单题平均生产耗时'
-        };
+        // Define column headers mapping based on the selected userListType
+        let columnHeaders = {};
+        
+        if (userListType === "produce") {
+          // Mapping for 试题生产 (production)
+          columnHeaders = {
+            userName: '用户名',
+            totalLeadsClue: '线索领取数量',
+            totalSubClue: '试题提交审核总数(快照)',
+            totalPassClue: '试题通过总数(实时)',
+            totalPassClueSnapShot: '试题通过总数(快照)',
+            totalPassRate: '供应商生产通过率',
+            totalPending: '驳回待生产试题数(实时)',
+            totalClueDiscarded: '试题废弃总数(快照)',
+            discardRate: '供应商线索废弃率',
+            timeSpentPerClue: '单题平均生产耗时'
+          };
+        } else {
+          // Mapping for 试题审核 (audit)
+          columnHeaders = {
+            userName: '用户名',
+            totalLeadsClue: '线索领取数量',
+            totalPendingClue: '待审核总数(实时)',
+            totalRejectedClue: '驳回待审核总数(实时)',
+            totalPassClueSnapShot: '试题通过总数(快照)',
+            totalPassClue: '试题通过总数(实时)',
+            waitAuditAgainNum: '驳回待审核总数(实时)',
+            totalReviewedClue: '已审核总数',
+            rejectionRate: '供应商审核驳回率',
+            auditPassRate: '供应商审核通过率',
+            timeSpentPerClue: '单题平均审核耗时'
+          };
+        }
         
         // Transform data to include proper headers
         const formattedData = allData.map(item => {
@@ -647,7 +667,8 @@ export default function Main() {
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0];
         const supplierName = supplierOptions.find(s => s.id === supplierId)?.name || '';
-        link.download = `${supplierName}_数据导出_${dateStr}.xlsx`;
+        const fileType = userListType === "produce" ? "生产数据" : "审核数据";
+        link.download = `${supplierName}_${fileType}_${dateStr}.xlsx`;
         
         document.body.appendChild(link);
         link.click();
