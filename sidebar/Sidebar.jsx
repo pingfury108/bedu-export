@@ -6,25 +6,13 @@ import * as XLSX from 'xlsx';
 export default function Main() {
   const [startDate, setStartDate] = useState("2025-03-06");
   const [endDate, setEndDate] = useState("2025-03-13");
-  const [supplierId, setSupplierId] = useState("29");
+  const [supplierId, setSupplierId] = useState("");
   const [username, setUsername] = useState("");
   const [activeTab, setActiveTab] = useState("settings");
-  const [productTypeId, setProductTypeId] = useState("1");
+  const [productTypeId, setProductTypeId] = useState("");
   const [userListType, setUserListType] = useState("produce");
-  const [supplierOptions, setSupplierOptions] = useState([
-    { id: "1", name: "百度教育" },
-    { id: "4", name: "高等教育-百度众测" },
-    { id: "26", name: "众测-教辅拆解" },
-    { id: "29", name: "syr" },
-  ]);
-  const [productTypes, setProductTypes] = useState([
-    { id: "1", name: "定产答案" },
-    { id: "2", name: "定产解析" },
-    { id: "3", name: "定产视频" },
-    { id: "4", name: "高等教育答案定产" },
-    { id: "5", name: "高等教育错误试题修订" },
-    { id: "8", name: "定向生产" },
-  ]);
+  const [supplierOptions, setSupplierOptions] = useState([]);
+  const [productTypes, setProductTypes] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pendingMessage, setPendingMessage] = useState(null);
@@ -330,7 +318,7 @@ export default function Main() {
   const handleReset = () => {
     setStartDate("2025-03-06");
     setEndDate("2025-03-13");
-    setSupplierId("29");
+    setSupplierId("");
     setUsername("");
     setQueryResults(null);
     setTotalCount(0);
@@ -602,9 +590,12 @@ export default function Main() {
             totalPassClue: '试题通过总数(实时)',
             waitAuditAgainNum: '驳回待审核总数(实时)',
             totalReviewedClue: '已审核总数',
-            rejectionRate: '供应商审核驳回率',
-            auditPassRate: '供应商审核通过率',
-            timeSpentPerClue: '单题平均审核耗时'
+            // Include both uppercase and lowercase versions
+            RejectionRate: '供应商审核驳回率(数值)',
+            rejectionRate: '供应商审核驳回率(%)',
+            AuditPassRate: '供应商审核通过率(数值)',
+            auditPassRate: '供应商审核通过率(%)',
+            timeSpentPerClue: '单题平均审核耗时(秒)'
           };
         }
         
