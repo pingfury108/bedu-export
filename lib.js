@@ -198,7 +198,7 @@ export async function get_produceuserlist(params = {}) {
 
   // Merge default parameters with provided parameters
   const queryParams = { ...defaultParams, ...params };
-  
+
   // Build query string
   const queryString = Object.entries(queryParams)
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
@@ -218,6 +218,45 @@ export async function get_produceuserlist(params = {}) {
     return await response.json();
   } catch (error) {
     console.error('Error fetching produce user list:', error);
+    throw error;
+  }
+}
+
+export async function get_audituserlist(params = {}) {
+  // Default parameters
+  const defaultParams = {
+    startDate: '20250306',
+    endDate: '20250313',
+    role: 1,
+    userName: '',
+    clueType: 1,
+    sid: 29,
+    pn: 1,
+    rn: 20
+  };
+
+  // Merge default parameters with provided parameters
+  const queryParams = { ...defaultParams, ...params };
+
+  // Build query string
+  const queryString = Object.entries(queryParams)
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join('&');
+
+  const url = `/edushop/question/dashboard/uerslist/audituserlist?${queryString}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching audit user list:', error);
     throw error;
   }
 }

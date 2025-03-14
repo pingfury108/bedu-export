@@ -10,6 +10,7 @@ export default function Main() {
   const [username, setUsername] = useState("");
   const [activeTab, setActiveTab] = useState("settings");
   const [productTypeId, setProductTypeId] = useState("1");
+  const [userListType, setUserListType] = useState("produce");
   const [supplierOptions, setSupplierOptions] = useState([
     { id: "1", name: "百度教育" },
     { id: "4", name: "高等教育-百度众测" },
@@ -107,8 +108,8 @@ export default function Main() {
           if (!isLoading) {
             fetchFilterData();
           }
-        } else if (message.action === 'produceUserListResponse') {
-          // Handle the response from get_produceuserlist
+        } else if (message.action === 'produceUserListResponse' || message.action === 'auditUserListResponse') {
+          // Handle the response from get_produceuserlist or get_audituserlist
           setIsLoading(false);
           setPendingMessage(null);
           
@@ -237,9 +238,13 @@ export default function Main() {
           rn: itemsPerPage
         };
         
-        console.log('Sidebar is requesting produce user list with params:', params);
+        console.log(`Sidebar is requesting ${userListType} user list with params:`, params);
+        
+        // Determine which action to use based on userListType
+        const action = userListType === "produce" ? 'fetchProduceUserList' : 'fetchAuditUserList';
+        
         port.postMessage({ 
-          action: 'fetchProduceUserList',
+          action: action,
           params: params
         });
         return;
@@ -252,7 +257,7 @@ export default function Main() {
       
       // Set up a message listener for handling multiple responses
       const messageListener = (message) => {
-        if (message.action === 'produceUserListResponse') {
+        if (message.action === 'produceUserListResponse' || message.action === 'auditUserListResponse') {
           requestsCompleted++;
           
           if (message.error) {
@@ -305,7 +310,7 @@ export default function Main() {
           
           console.log(`Requesting data for user ${index+1}/${usernames.length}: ${user}`);
           port.postMessage({ 
-            action: 'fetchProduceUserList',
+            action: userListType === "produce" ? 'fetchProduceUserList' : 'fetchAuditUserList',
             params: params
           });
         }, index * 300); // 300ms delay between requests
@@ -368,7 +373,7 @@ export default function Main() {
         return new Promise((resolve, reject) => {
           // Set up a one-time message listener for this specific request
           const messageListener = (response) => {
-            if (response.action === 'produceUserListResponse') {
+            if (response.action === 'produceUserListResponse' || response.action === 'auditUserListResponse') {
               port.onMessage.removeListener(messageListener);
               if (response.error) {
                 reject(response.error);
@@ -424,7 +429,7 @@ export default function Main() {
           try {
             // Request data for this page
             const pageData = await sendMessageAsync({
-              action: 'fetchProduceUserList',
+              action: userListType === "produce" ? 'fetchProduceUserList' : 'fetchAuditUserList',
               params: params
             });
             
@@ -463,7 +468,7 @@ export default function Main() {
           try {
             // Request data for this user
             const userData = await sendMessageAsync({
-              action: 'fetchProduceUserList',
+              action: userListType === "produce" ? 'fetchProduceUserList' : 'fetchAuditUserList',
               params: params
             });
             
@@ -584,7 +589,15 @@ export default function Main() {
     if (!port) {
       connectToBackground();
     } else {
-      fetchFilterData();
+      // Clear error state
+      setError(null);
+      
+      // If we were in the middle of a query, retry it
+      if (isLoading) {
+        handleQuery();
+      } else {
+        fetchFilterData();
+      }
     }
   };
 
@@ -613,6 +626,22 @@ export default function Main() {
                   onChange={(e) => setEndDate(e.target.value)}
                 />
               </div>
+            </div>
+            
+            {/* User List Type Selection */}
+            <div className="flex flex-col w-full">
+              <label className="label label-text text-sm py-1">
+                用户列表类型
+              </label>
+              <select 
+                className="select select-sm select-bordered w-full text-sm"
+                value={userListType}
+                onChange={(e) => setUserListType(e.target.value)}
+                disabled={isLoading}
+              >
+                <option value="produce">试题生产</option>
+                <option value="audit">试题审核</option>
+              </select>
             </div>
             
             {/* Supplier ID Dropdown */}

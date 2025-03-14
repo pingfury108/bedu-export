@@ -1,4 +1,4 @@
-import { textbook_info, save_book_info, baidu_user_info, replaceLatexWithImages, replacePunctuation, doc_img_upload, doc_save_page, llm_test, dash_userlist_label, get_produceuserlist } from "../lib.js";
+import {dash_userlist_label, get_produceuserlist, get_audituserlist } from "../lib.js";
 
 console.log('hello from content_scripts');
 
@@ -48,6 +48,26 @@ function connectToBackground() {
         console.error('Error fetching produce user list:', error);
         port.postMessage({
           action: 'produceUserListResponse',
+          error: error.message
+        });
+      }
+    } else if (message.action === 'fetchAuditUserList') {
+      try {
+        // Call the get_audituserlist function with the provided parameters
+        const params = message.params || {};
+        console.log('Content script is calling get_audituserlist with params:', params);
+        
+        const response = await get_audituserlist(params);
+        
+        // Send the data back to the background script
+        port.postMessage({
+          action: 'auditUserListResponse',
+          data: response
+        });
+      } catch (error) {
+        console.error('Error fetching audit user list:', error);
+        port.postMessage({
+          action: 'auditUserListResponse',
           error: error.message
         });
       }
