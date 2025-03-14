@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // Import SheetJS
 import * as XLSX from 'xlsx';
@@ -41,6 +41,8 @@ export default function Main() {
   const [exportStatus, setExportStatus] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [collectedData, setCollectedData] = useState([]);
+  // Add a ref to track if export should be stopped
+  const shouldStopExport = useRef(false);
 
   // Function to establish connection with background script
   const connectToBackground = () => {
@@ -336,6 +338,12 @@ export default function Main() {
     setCurrentPage(1);
   };
 
+  // Function to handle stopping the export
+  const handleStopExport = () => {
+    shouldStopExport.current = true;
+    setExportStatus('正在停止导出...');
+  };
+
   // Export data
   const handleExport = async () => {
     if (!queryResults || totalCount === 0) {
@@ -344,6 +352,9 @@ export default function Main() {
     }
 
     try {
+      // Reset the stop flag before starting a new export
+      shouldStopExport.current = false;
+      
       // Clear any previously stored data before starting the export
       setIsExporting(true);
       setExportStatus('正在清除旧数据...');
@@ -360,6 +371,17 @@ export default function Main() {
           }
         });
       });
+      
+      // Check if export should be stopped
+      if (shouldStopExport.current) {
+        setExportStatus('导出已取消');
+        setTimeout(() => {
+          setIsExporting(false);
+          setExportProgress(0);
+          setExportStatus('');
+        }, 1500);
+        return;
+      }
       
       setExportStatus('正在收集数据...');
       setExportProgress(5);
@@ -413,6 +435,17 @@ export default function Main() {
         
         // Collect data from all pages
         for (let page = 1; page <= totalPages; page++) {
+          // Check if export should be stopped
+          if (shouldStopExport.current) {
+            setExportStatus('导出已取消');
+            setTimeout(() => {
+              setIsExporting(false);
+              setExportProgress(0);
+              setExportStatus('');
+            }, 1500);
+            return;
+          }
+          
           setExportStatus(`正在收集数据 (${page}/${totalPages})...`);
           
           // Prepare query parameters
@@ -452,6 +485,17 @@ export default function Main() {
         let completedUsers = 0;
         
         for (const user of usernames) {
+          // Check if export should be stopped
+          if (shouldStopExport.current) {
+            setExportStatus('导出已取消');
+            setTimeout(() => {
+              setIsExporting(false);
+              setExportProgress(0);
+              setExportStatus('');
+            }, 1500);
+            return;
+          }
+          
           setExportStatus(`正在收集用户 "${user}" 的数据 (${completedUsers+1}/${usernames.length})...`);
           
           // Prepare query parameters - use large rn to get all data for this user
@@ -490,6 +534,17 @@ export default function Main() {
         }
       }
 
+      // Check if export should be stopped
+      if (shouldStopExport.current) {
+        setExportStatus('导出已取消');
+        setTimeout(() => {
+          setIsExporting(false);
+          setExportProgress(0);
+          setExportStatus('');
+        }, 1500);
+        return;
+      }
+
       // Store the collected data
       setCollectedData(allData);
       
@@ -501,6 +556,17 @@ export default function Main() {
         if (chrome.runtime.lastError) {
           setError(`保存数据时出错: ${chrome.runtime.lastError.message}`);
           setIsExporting(false);
+          return;
+        }
+        
+        // Check if export should be stopped
+        if (shouldStopExport.current) {
+          setExportStatus('导出已取消');
+          setTimeout(() => {
+            setIsExporting(false);
+            setExportProgress(0);
+            setExportStatus('');
+          }, 1500);
           return;
         }
         
@@ -536,6 +602,17 @@ export default function Main() {
           return formattedItem;
         });
         
+        // Check if export should be stopped
+        if (shouldStopExport.current) {
+          setExportStatus('导出已取消');
+          setTimeout(() => {
+            setIsExporting(false);
+            setExportProgress(0);
+            setExportStatus('');
+          }, 1500);
+          return;
+        }
+        
         // Create workbook with formatted data
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(formattedData);
@@ -544,6 +621,17 @@ export default function Main() {
         XLSX.utils.book_append_sheet(wb, ws, "数据导出");
         
         setExportProgress(80); // 80% progress after creating workbook
+        
+        // Check if export should be stopped
+        if (shouldStopExport.current) {
+          setExportStatus('导出已取消');
+          setTimeout(() => {
+            setIsExporting(false);
+            setExportProgress(0);
+            setExportStatus('');
+          }, 1500);
+          return;
+        }
         
         // Generate Excel file
         setExportStatus('正在下载Excel文件...');
@@ -573,6 +661,7 @@ export default function Main() {
           setIsExporting(false);
           setExportProgress(0);
           setExportStatus('');
+          shouldStopExport.current = false;
         }, 3000);
       });
       
@@ -580,6 +669,7 @@ export default function Main() {
       console.error('Export error:', error);
       setError(`导出错误: ${error.message || error}`);
       setIsExporting(false);
+      shouldStopExport.current = false;
     }
   };
 
@@ -631,7 +721,7 @@ export default function Main() {
             {/* User List Type Selection */}
             <div className="flex flex-col w-full">
               <label className="label label-text text-sm py-1">
-                用户列表类型
+                试题类型
               </label>
               <select 
                 className="select select-sm select-bordered w-full text-sm"
@@ -741,18 +831,27 @@ export default function Main() {
               </div>
             )}
             
-            {/* Export Progress */}
+            {/* Export Progress with Stop Button */}
             {isExporting && (
               <div className="mt-2">
                 <div className="flex justify-between text-xs mb-1">
                   <span>{exportStatus}</span>
                   <span>{exportProgress}%</span>
                 </div>
-                <progress 
-                  className="progress progress-primary w-full" 
-                  value={exportProgress} 
-                  max="100"
-                ></progress>
+                <div className="flex gap-2 items-center">
+                  <progress 
+                    className="progress progress-primary flex-1" 
+                    value={exportProgress} 
+                    max="100"
+                  ></progress>
+                  <button
+                    className="btn btn-xs btn-error"
+                    onClick={handleStopExport}
+                    disabled={shouldStopExport.current}
+                  >
+                    停止
+                  </button>
+                </div>
               </div>
             )}
             
